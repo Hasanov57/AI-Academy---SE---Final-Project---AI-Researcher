@@ -56,7 +56,7 @@ def _report_header_footer(page_canvas: canvas.Canvas, doc: BaseDocTemplate) -> N
     page_canvas.line(2.2 * cm, height - 1.25 * cm, width - 2.2 * cm, height - 1.25 * cm)
     page_canvas.setFont(FONT, 7.5)
     page_canvas.setFillColor(GRAY)
-    page_canvas.drawString(2.2 * cm, height - 1.05 * cm, "AI-ENG-110 - Final Report")
+    page_canvas.drawString(2.2 * cm, height - 1.05 * cm, "M301 - Final Report")
     page_canvas.drawRightString(width - 2.2 * cm, height - 1.05 * cm, "Spring 2026")
     page_canvas.line(2.2 * cm, 1.35 * cm, width - 2.2 * cm, 1.35 * cm)
     page_canvas.drawString(2.2 * cm, 1.05 * cm, "AI Academy, National AI Center")
@@ -165,9 +165,9 @@ def _bullet(text: str, style: ParagraphStyle) -> Paragraph:
     return Paragraph(f"- {text}", style)
 
 
-def build_report() -> Path:
+def build_report(output_name: str = "report.pdf") -> Path:
     """Create the ten-page technical report."""
-    output = ROOT / "report" / "report.pdf"
+    output = ROOT / "report" / output_name
     output.parent.mkdir(parents=True, exist_ok=True)
     styles = _report_styles()
     doc = BaseDocTemplate(
@@ -177,8 +177,8 @@ def build_report() -> Path:
         rightMargin=2.2 * cm,
         topMargin=1.65 * cm,
         bottomMargin=1.7 * cm,
-        title="AI-ENG-110 Final Project Report - Async Research Assistant",
-        author="Samir Həsənov, Ramil Məmmədəliyev, Elmir Əsgərov",
+        title="M301 Final Project Report - Async Research Assistant",
+        author="Samir Həsənov, Elmir Əsgərov, Ramil Məmmədəliyev",
     )
     frame = Frame(doc.leftMargin, doc.bottomMargin, doc.width, doc.height, id="content")
     doc.addPageTemplates(PageTemplate(id="report", frames=[frame], onPage=_report_header_footer))
@@ -188,16 +188,16 @@ def build_report() -> Path:
         [
             Spacer(1, 0.55 * cm),
             _p("AI Academy, National AI Center", styles["subtitle"]),
-            _p("AI-ENG-110 Software Engineering - Final Project", styles["subtitle"]),
+            _p("M301 Software Engineering - Final Project", styles["subtitle"]),
             _p("Async Research Assistant", styles["title"]),
             Table(
                 [
                     ["Team", "Async Research Assistant Team", "Topic", "4"],
                     [
                         "Members",
-                        "Samir Həsənov; Ramil Məmmədəliyev; Elmir Əsgərov",
+                        "Samir Həsənov; Elmir Əsgərov; Ramil Məmmədəliyev",
                         "Date",
-                        "2026-09-17",
+                        "2026-09-18",
                     ],
                     [
                         "Repository",
@@ -237,7 +237,8 @@ def build_report() -> Path:
                 "logging. A bounded asyncio pipeline isolates failed sources so remaining "
                 "evidence can still reach synthesis. The live benchmark measured 1.440 seconds "
                 "sequentially and 0.544 seconds concurrently, a 2.64x speedup with application "
-                "caching disabled, while sixty-two offline tests pass with 78.25 percent coverage. "
+                "caching disabled, while sixty-four offline tests pass with 73.56 percent "
+                "coverage. "
                 "A real Gemini request incompatibility taught us to keep provider adaptations "
                 "outside the supplied package; if starting again, we would enforce that boundary "
                 "from the first commit and add semantic citation-entailment checks.",
@@ -288,9 +289,9 @@ def build_report() -> Path:
                 "The required entry point is <font name='Courier'>python -m researcher ask "
                 "\"question\"</font>. The <font name='Courier'>--sources wiki,arxiv</font> option "
                 "restricts retrieval, while <font name='Courier'>--no-cache</font> forces a fresh "
-                "run. JSON output supports saved artefacts and automated inspection. The first "
-                "release intentionally omits a web interface because Topic 4 requires a CLI and "
-                "only recommends HTTP.",
+                "run. JSON output supports saved artefacts and automated inspection. A Streamlit "
+                "interface reuses the same Researcher use case for project-day interaction, while "
+                "the required CLI remains the primary automation and grading entry point.",
                 styles["body"],
             ),
             _p("1.2 Provider choice and the AI module contract", styles["h2"]),
@@ -555,11 +556,9 @@ class MemoryRepository(ResearchRepository): ...""",
             ),
             _bullet("Missing live credentials fail before any external call.", styles["body"]),
             _bullet(
-                "Citation markers must be present, in range and equal the returned reference set.",
+                "Citation markers must be present, in range, equal the returned reference set "
+                "and attached to every substantive sentence.",
                 styles["body"],
-            ),
-            _bullet(
-                "Every substantive sentence must include a valid citation marker.", styles["body"]
             ),
             PageBreak(),
         ]
@@ -643,7 +642,7 @@ class MemoryRepository(ResearchRepository): ...""",
                     ["Suite", "Count", "Network", "Result"],
                     ["Instructor AI smoke contract", "Included", "Mocked", "Passing"],
                     ["Student-owned tests", "Included", "Replaced boundaries", "Passing"],
-                    ["Total", "62", "None", "78.25% coverage"],
+                    ["Total", "64", "None", "73.56% coverage"],
                 ],
                 colWidths=[6.2 * cm, 2.1 * cm, 3.0 * cm, 3.0 * cm],
                 repeatRows=1,
@@ -705,7 +704,8 @@ python demo_ai.py --offline --limit 5""",
             _p("7. Deployment and Reproducibility", styles["h1"]),
             _p("7.1 Docker image", styles["h2"]),
             _p(
-                "The single-stage 515.4 MB image uses Python 3.12 slim, installs fully pinned "
+                "The last verified single-stage image was 515.4 MB. It uses Python 3.12 slim, "
+                "installs fully pinned "
                 "dependencies, copies the "
                 "provided and student packages, and drops to a non-root user. Docker Compose runs "
                 "PostgreSQL 17.6 Alpine and waits for pg_isready before the application starts.",
@@ -807,23 +807,25 @@ docker run --rm async-researcher python -m researcher ask \\
                 styles["body"],
             ),
             _bullet(
-                "Provider failover, streaming and a web interface remain outside release 1.0.",
+                "Provider failover, streaming answers and public hosting remain outside release "
+                "1.0; the included Streamlit UI runs through Docker Compose.",
                 styles["body"],
             ),
             _p("Tools and Acknowledgements", styles["h1"]),
             _p(
-                "OpenAI Codex was used substantially to draft architecture, implementation, tests, "
-                "Docker troubleshooting and report text. The team reviewed and adapted the drafts, "
-                "executed the complete offline suite and live demonstrations, and accepts "
-                "responsibility for understanding and defending the submission. The provided ai "
-                "package and course templates came from AI Academy.",
+                "AI tools were used for architecture planning and technical assistance during "
+                "development. The team reviewed and adapted the suggestions and verified the final "
+                "system through the complete offline suite and live demonstrations. The provided "
+                "ai package and course templates came from AI Academy.",
                 styles["callout"],
             ),
             _p("References", styles["h1"]),
-            _p("[1] AI Academy, AI-ENG-110 Final Project Brief, Spring 2026.", styles["small"]),
             _p(
-                "[2] Gemini model documentation: "
-                "ai.google.dev/gemini-api/docs",
+                "[1] AI Academy, M301 Software Engineering Final Project Brief, Spring 2026.",
+                styles["small"],
+            ),
+            _p(
+                "[2] Gemini model documentation: ai.google.dev/gemini-api/docs",
                 styles["small"],
             ),
             _p("[3] Tavily API documentation: docs.tavily.com", styles["small"]),
@@ -891,7 +893,7 @@ def _slide_header(c: canvas.Canvas, title: str, page_number: int, total: int = 1
     c.setFont(FONT, 7)
     c.setFillColor(GRAY)
     c.drawString(34, 18, "Async Research Assistant Team - Topic 4")
-    c.drawRightString(width - 34, 18, f"AI-ENG-110 - Spring 2026  {page_number}/{total}")
+    c.drawRightString(width - 34, 18, f"M301 - Spring 2026  {page_number}/{total}")
 
 
 def _slide_text(
@@ -969,7 +971,7 @@ def build_slides() -> Path:
     c.line(width * 0.31, height * 0.55, width * 0.69, height * 0.55)
     c.setFillColor(GRAY)
     c.setFont(FONT, 16)
-    c.drawCentredString(width / 2, height * 0.47, "AI-ENG-110 Software Engineering Final Project")
+    c.drawCentredString(width / 2, height * 0.47, "M301 Software Engineering Final Project")
     c.setFont(FONT_BOLD, 15)
     c.setFillColor(RED)
     c.drawCentredString(width / 2, height * 0.37, "Async Research Assistant Team")
