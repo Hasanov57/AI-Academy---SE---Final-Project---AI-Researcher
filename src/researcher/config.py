@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     arxiv_min_interval_seconds: float = Field(default=1.0, ge=0, le=30)
     question_max_length: int = Field(default=1000, ge=50, le=10_000)
     http_user_agent: str = (
-        "AsyncResearchAssistant/1.0 (AI-ENG-110; contact: your-email@example.com)"
+        "AsyncResearchAssistant/1.0 (M301; contact: your-email@example.com)"
     )
 
     @field_validator("llm_model")

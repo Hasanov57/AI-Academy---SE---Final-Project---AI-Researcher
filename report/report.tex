@@ -1,0 +1,172 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{booktabs,hyperref,listings,xcolor,array}
+\definecolor{academyblue}{HTML}{00459A}
+\hypersetup{colorlinks=true,linkcolor=academyblue,urlcolor=academyblue}
+\title{M301 Software Engineering Final Project\\Async Research Assistant}
+\author{Samir Həsənov (@Hasanov57) \\
+Elmir Əsgərov (@elmiresgerov) \\
+Ramil Məmmədəliyev (@ramilmammadaliyev)}
+\date{September 18, 2026}
+
+\begin{document}
+\maketitle
+
+\begin{center}
+\textbf{Repository:} \url{https://github.com/Hasanov57/AI-Academy---SE---Final-Project---AI-Researcher}\\
+\textbf{Final tag:} \texttt{v1.0-final}
+\end{center}
+
+\section*{Executive Summary}
+We built a command-line research assistant that queries Wikipedia, arXiv and Tavily concurrently
+and produces a concise answer with numeric citations. The student-owned layer wraps the supplied
+\texttt{ai/} package without modifying its interface. It adds typed configuration, PostgreSQL
+persistence, a TTL source cache, retries, timeouts, rate limiting and structured logging. A bounded
+\texttt{asyncio} pipeline isolates failed sources so remaining evidence can still reach synthesis.
+The live benchmark measured a 1.440-second sequential median and a 0.544-second concurrent
+median, a 2.64x speedup with application caching disabled, while sixty-four offline tests pass with
+73.56 percent coverage. A real Gemini request incompatibility taught us to keep provider
+adaptations outside the supplied package; if starting again, we would enforce that boundary from
+the first commit and add semantic citation-entailment checks.
+
+\tableofcontents
+
+\section{Project Overview}
+\subsection{Problem framing and scope}
+A user submits one question. The application gathers short, relevant excerpts from three distinct
+origins and passes only that evidence to the provided synthesizer. The output contains an answer,
+inline \texttt{[N]} markers, a reference list, source timings and any degradation warnings. The
+mandatory interface is \texttt{python -m researcher ask "question"}; \texttt{--sources} restricts
+origins and \texttt{--no-cache} bypasses cached reads and writes. The optional Streamlit interface
+reuses the same core use case for project-day interaction while the CLI remains the required entry point.
+
+\subsection{Provider choice and AI contract}
+Google Gemini \texttt{gemini-3.5-flash-lite} performs synthesis and Tavily supplies general web results. Wikipedia
+and arXiv need no credentials. All calls cross the provided \texttt{ai.fetch\_*} and
+\texttt{ai.synthesize} boundary. Our code instantiates the supplied provider adapters but never
+calls an upstream SDK directly.
+
+\section{Architecture}
+\subsection{Module map}
+The CLI creates a \texttt{ResearchRequest}; \texttt{Researcher} coordinates source retrieval,
+synthesis and persistence. \texttt{SourceOrchestrator} owns bounded task creation.
+\texttt{SourceService} owns cache, retry, timeout, rate-limit and logging policy.
+\texttt{SynthesisService} moves the blocking adapter to a worker thread and validates citations.
+Both \texttt{PostgresRepository} and \texttt{MemoryRepository} implement our
+\texttt{ResearchRepository} abstract base class.
+
+\begin{verbatim}
+CLI -> Researcher -> SourceOrchestrator -> SourceService -> provided ai.fetch_*
+                 |                         |
+                 |                         +-> PostgreSQL TTL cache
+                 +-> SynthesisService -> provided ai.synthesize
+                 +-> PostgreSQL session, source and citation audit
+\end{verbatim}
+
+\subsection{OOP design and data flow}
+Stateful resources use classes: repository pools, rate limiters, wrappers and the orchestrator.
+Pure transformations such as query canonicalization and URL de-duplication remain functions.
+Pydantic models cross module boundaries; raw dictionaries remain limited to serialization edges.
+Constructor injection lets tests replace source callables and the LLM without network access.
+
+\section{Concurrency and Performance}
+The three source calls are independent and I/O-bound, so \texttt{asyncio} is more suitable than
+multiprocessing. One shared \texttt{httpx.AsyncClient} reuses connections. A configurable semaphore
+bounds parallelism, while \texttt{asyncio.timeout} applies a separate deadline to each origin.
+Synthesis uses \texttt{asyncio.to\_thread} because the supplied LLM interface is synchronous.
+
+\begin{center}
+\begin{tabular}{lrrr}
+\toprule
+Workload & Sequential & Concurrent & Speedup\\
+\midrule
+Three live sources, cache bypassed & 1.440 s & 0.544 s & 2.64x\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The measurement used three live runs on the same Windows machine with application cache disabled.
+Sequential times were 1.440, 1.439 and 1.523 seconds; concurrent times were 0.535, 0.544 and
+0.677 seconds. Retrieval, not LLM synthesis, was measured so source parallelism was isolated. The
+new bottleneck is the slowest provider plus network variance. arXiv receives at most one new
+request per second from a process.
+
+\section{Robustness and Error Handling}
+Transient provider, HTTP and timeout errors receive up to three attempts with exponential backoff.
+Every call has a deadline and emits start, finish, timing, count and failure logs without secrets.
+The orchestrator converts a failed source into a typed outcome and warning. If every source fails,
+the system stops before synthesis and prints a clean error.
+
+During live testing Gemini returned HTTP 400 when a provider-specific thinking option was not
+accepted by the selected model. The CLI displayed a clean provider error and the logs identified
+the model and status without exposing the key. We reverted the supplied adapter to its original
+course version and introduced a student-owned \texttt{ResearchLLM} wrapper, preserving the
+instructor contract. Separate tests force source failure, repeated timeouts and invalid citations.
+
+Questions are stripped, whitespace-normalized, limited to 1,000 characters and checked for at least
+one supported source. Citation validation requires at least one marker, rejects out-of-range markers,
+requires marker/reference equality and checks each substantive sentence for a citation.
+
+\section{Storage and Caching}
+PostgreSQL stores \texttt{research\_sessions}, ordered \texttt{research\_sources}, per-origin
+\texttt{source\_attempts}, \texttt{citations} and \texttt{source\_cache}. Foreign keys cascade from
+the session, and indexes cover cache expiry and session creation time. One transaction saves a
+complete result.
+
+The cache key is the source selector plus a case-folded, whitespace-normalized query. Source lists
+are stored as JSONB with an expiration timestamp. The default TTL is 24 hours. Expired entries are
+removed lazily on access, and \texttt{--no-cache} bypasses both cache reads and writes.
+
+\section{Testing}
+The suite contains 64 offline tests and reaches 73.56 percent branch-aware coverage of the
+student-owned package. The instructor smoke tests remain unchanged. Tests cover cache hit and
+expiry, transient retry, timeout exhaustion, citation rejection, input validation, URL
+de-duplication, graceful degradation and the end-to-end use case. The concurrency test records three
+simultaneously active source calls and compares its wall clock with the sequential baseline.
+\texttt{ruff} and strict \texttt{mypy} both complete without issues.
+
+\section{Deployment and Reproducibility}
+The last verified single-stage image was 515.4 MB. It uses Python 3.12 slim, installs pinned dependencies, copies the
+provided and student packages, drops root privileges and runs the required command. Docker Compose
+supplies PostgreSQL 17.6 and waits for its health check. Secrets remain in an ignored
+\texttt{.env}; \texttt{.env.example} contains only empty fields and non-secret configuration.
+
+\section{Limitations and Future Work}
+\begin{itemize}
+  \item Citation syntax checks cannot establish semantic entailment.
+  \item A single PostgreSQL instance has no high-availability replication.
+  \item In-process arXiv limiting does not coordinate across multiple containers.
+  \item Upstream excerpts may omit context even when every service is healthy.
+  \item Provider failover, streaming answers and public hosting remain outside the first release;
+        the included Streamlit UI runs through Docker Compose.
+\end{itemize}
+
+\section{Tools and Acknowledgements}
+AI tools were used for architecture planning and technical assistance during development. The team
+reviewed and adapted the suggestions and verified the final system through the complete offline
+suite and live demonstrations. The provided \texttt{ai/} package and course templates came from
+AI Academy.
+
+\section*{References}
+\begin{enumerate}
+  \item AI Academy, \emph{M301 Software Engineering Final Project Brief}, Spring 2026.
+  \item Gemini API documentation: \url{https://ai.google.dev/gemini-api/docs}
+  \item Tavily API documentation: \url{https://docs.tavily.com/}
+  \item MediaWiki API documentation: \url{https://www.mediawiki.org/wiki/API:Main_page}
+  \item arXiv API documentation: \url{https://info.arxiv.org/help/api/index.html}
+  \item Python asyncio documentation: \url{https://docs.python.org/3/library/asyncio.html}
+\end{enumerate}
+
+\appendix
+\section{Reproducing the benchmark}
+\begin{verbatim}
+python -m pip install -r requirements.txt
+python -m pip install -e .
+docker compose build researcher
+docker compose up -d db
+docker compose run --rm researcher python scripts/bench.py --runs 3
+\end{verbatim}
+
+\end{document}

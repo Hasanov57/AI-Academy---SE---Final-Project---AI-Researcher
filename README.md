@@ -99,3 +99,35 @@ For a completely offline installation check:
 ```powershell
 docker compose run --rm researcher python -m researcher ask "What is photosynthesis?" --offline --storage memory
 ```
+
+## Testing and quality checks
+
+The automated suite does not require live network access:
+
+```powershell
+python -m pytest --cov=researcher --cov-report=term-missing --cov-fail-under=60
+python -m ruff check src tests scripts
+python -m mypy src/researcher
+python demo_ai.py --offline --limit 5
+```
+
+The final verification completed **64 tests** with **73.56% branch-aware coverage**. Ruff and strict mypy completed without issues.
+
+## Sequential versus concurrent benchmark
+
+The benchmark compares fetching Wikipedia, arXiv and web-search results sequentially with fetching the same sources concurrently. Application cache reads and writes are bypassed, and LLM synthesis is excluded so the source-retrieval pipeline is measured directly.
+
+```powershell
+docker compose build researcher
+docker compose up -d db
+docker compose run --rm researcher python scripts/bench.py --runs 3
+```
+
+| Run | Sequential | Concurrent |
+|---:|---:|---:|
+| 1 | 1.440 s | 0.535 s |
+| 2 | 1.439 s | 0.544 s |
+| 3 | 1.523 s | 0.677 s |
+| **Median** | **1.440 s** | **0.544 s** |
+
+The median concurrent run was **2.64x faster**. After parallelization, the main bottleneck is the slowest external provider plus normal network latency variation.
